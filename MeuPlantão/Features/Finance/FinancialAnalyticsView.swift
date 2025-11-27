@@ -12,7 +12,7 @@ struct FinancialAnalyticsView: View {
     @State private var selectedShiftIDs = Set<UUID>()
     @State private var editMode: EditMode = .inactive
     
-    // --- LÓGICA DE CÁLCULO MENSAL (DETALHADA) ---
+    // --- LÓGICA DE CÁLCULO MENSAL (CORRIGIDA) ---
     var monthStats: MonthStats {
         let calendar = Calendar.current
         let monthShifts = shifts.filter {
@@ -22,46 +22,54 @@ struct FinancialAnalyticsView: View {
         
         var totalHours: Int = 0
         
-        // Previsão (Contábil)
+        // Previsão (O que deveria acontecer no mundo ideal)
         var grossIncome: Double = 0.0
         var expenses: Double = 0.0
         
-        // Fluxo de Caixa Real (O que aconteceu de fato)
-        var totalReceived: Double = 0.0 // Entradas
-        var totalPaid: Double = 0.0     // Saídas (Repasses pagos)
+        // Realidade (O que aconteceu no caixa)
+        var totalReceived: Double = 0.0 // Somatória de todas as entradas
+        var totalPaid: Double = 0.0     // Somatória de todas as saídas
         
         for shift in monthShifts {
-            // Horas (Ignora Compromissos)
-            if shift.status != .swappedOut && !shift.isCommitment && (shift.isWorkDone || shift.startDate < Date()) {
+            // Ignora compromissos pessoais
+            if shift.isCommitment { continue }
+            
+            // Horas (Se trabalhou)
+            if shift.status != .swappedOut && (shift.isWorkDone || shift.startDate < Date()) {
                 totalHours += shift.durationHours
             }
             
-            if shift.isCommitment { continue }
-            
-            // Financeiro
             switch shift.status {
             case .swappedOut:
-                // Previsão
+                // Saída: Hospital me deve (Bruto), Eu devo ao colega (Despesa)
                 grossIncome += shift.amount
                 expenses += shift.swapValue
                 
-                // Real (Caixa)
-                if shift.isPaid { totalReceived += shift.amount }       // Entrou do hospital
-                if shift.swapIsSettled { totalPaid += shift.swapValue } // Saiu para o colega
+                // Caixa Real:
+                if shift.isPaid {
+                    totalReceived += shift.amount // Entrou o dinheiro do hospital
+                }
+                if shift.swapIsSettled {
+                    totalPaid += shift.swapValue // Saiu o dinheiro pro colega
+                }
                 
             case .swappedIn:
-                // Previsão
+                // Entrada: Colega me deve
                 grossIncome += shift.swapValue
                 
-                // Real (Caixa)
-                if shift.swapIsSettled { totalReceived += shift.swapValue } // Entrou
+                // Caixa Real:
+                if shift.swapIsSettled {
+                    totalReceived += shift.swapValue // Entrou o dinheiro do colega
+                }
                 
-            default: // Normal
-                // Previsão
+            default: // Scheduled ou Completed
+                // Normal: Hospital me deve
                 grossIncome += shift.amount
                 
-                // Real (Caixa)
-                if shift.isPaid { totalReceived += shift.amount }
+                // Caixa Real:
+                if shift.isPaid {
+                    totalReceived += shift.amount // Entrou o dinheiro do hospital
+                }
             }
         }
         
@@ -80,8 +88,11 @@ struct FinancialAnalyticsView: View {
         let grossIncome: Double
         let expenses: Double
         let netIncome: Double
+        
         let totalReceived: Double
         let totalPaid: Double
+        
+        // Saldo Real = Tudo que entrou - Tudo que saiu
         var cashOnHand: Double { totalReceived - totalPaid }
     }
     
@@ -90,9 +101,11 @@ struct FinancialAnalyticsView: View {
         let now = Date()
         return shifts.filter { shift in
             if shift.isCommitment { return false }
+            // Só mostra se a data já passou ou trabalho feito ou é repasse
             let isFinancialActive = shift.startDate < now || shift.isWorkDone || shift.status == .swappedOut
             if !isFinancialActive { return false }
             
+            // Regras
             return (shift.status != .swappedOut && shift.status != .swappedIn && !shift.isPaid) ||
                    (shift.status == .swappedOut && !shift.isPaid) ||
                    (shift.status == .swappedIn && !shift.swapIsSettled)
@@ -103,8 +116,11 @@ struct FinancialAnalyticsView: View {
         let now = Date()
         return shifts.filter { shift in
             if shift.isCommitment { return false }
+            // Só mostra se a data já passou ou trabalho feito ou é repasse
             let isFinancialActive = shift.startDate < now || shift.isWorkDone || shift.status == .swappedOut
             if !isFinancialActive { return false }
+            
+            // Regra
             return shift.status == .swappedOut && !shift.swapIsSettled
         }.sorted { $0.startDate < $1.startDate }
     }
@@ -115,7 +131,6 @@ struct FinancialAnalyticsView: View {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Picker
                     Picker("Visão", selection: $selectedTab) {
                         Text("Resumo do Mês").tag(0)
                         Text("Gestão de Pendências").tag(1)
@@ -127,7 +142,7 @@ struct FinancialAnalyticsView: View {
                     if selectedTab == 0 {
                         ScrollView {
                             VStack(spacing: 20) {
-                                // Seletor
+                                // Seletor de Mês
                                 HStack {
                                     Button(action: { withAnimation { changeMonth(by: -1) } }) { Image(systemName: "chevron.left").font(.title3.bold()).foregroundStyle(Color.medBlue) }
                                     Spacer()
@@ -137,7 +152,7 @@ struct FinancialAnalyticsView: View {
                                 }
                                 .padding().background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
                                 
-                                // CARD PRINCIPAL (Lucro Líquido Previsto)
+                                // CARD LUCRO LÍQUIDO (PREVISÃO)
                                 VStack(alignment: .leading, spacing: 20) {
                                     HStack {
                                         VStack(alignment: .leading) {
@@ -166,25 +181,26 @@ struct FinancialAnalyticsView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 24))
                                 .shadow(color: .medBlue.opacity(0.3), radius: 15, y: 10)
                                 
-                                // --- DETALHAMENTO DE CAIXA REAL (AQUI ESTÁ O QUE VOCÊ PEDIU) ---
+                                // --- FLUXO DE CAIXA REAL (CORRIGIDO) ---
                                 VStack(spacing: 0) {
-                                    // Total Recebido
+                                    // Entradas Totais
                                     DetailRow(title: "Total Já Recebido (Entradas)", value: monthStats.totalReceived, color: .medGreen, icon: "arrow.down.left")
                                     
                                     Divider()
                                     
-                                    // Total Pago
+                                    // Saídas Totais
                                     DetailRow(title: "Total Pago (Repasses)", value: -monthStats.totalPaid, color: .medRed, icon: "arrow.up.right")
                                     
                                     Divider()
                                     
-                                    // Saldo Real
+                                    // Saldo (Em Caixa)
                                     HStack {
                                         Image(systemName: "building.columns.fill")
                                             .foregroundStyle(Color.medBlue)
                                         Text("Em Caixa (Saldo Real)")
                                             .medFont(.body, weight: .bold)
                                         Spacer()
+                                        // AQUI ESTÁ A MÁGICA: Recebido - Pago
                                         Text(monthStats.cashOnHand.formatted(.currency(code: "BRL")))
                                             .medFont(.title3, weight: .black)
                                             .foregroundStyle(Color.medBlue)
@@ -196,7 +212,7 @@ struct FinancialAnalyticsView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                                 .shadow(color: .black.opacity(0.05), radius: 5, y: 2)
                                 
-                                // Extrato
+                                // EXTRATO
                                 VStack(alignment: .leading, spacing: 15) {
                                     Text("Movimentações").medFont(.headline).padding(.leading, 5)
                                     let currentShifts = shifts.filter {
@@ -214,7 +230,7 @@ struct FinancialAnalyticsView: View {
                             .padding()
                         }
                     } else {
-                        // ABA PENDÊNCIAS (Mantida igual)
+                        // ABA PENDÊNCIAS
                         VStack {
                             if receivables.isEmpty && payables.isEmpty {
                                 ContentUnavailableView("Tudo em Dia", systemImage: "checkmark.circle.fill", description: Text("Nenhuma pendência financeira.")).padding(.top, 50)
@@ -277,7 +293,7 @@ struct FinancialAnalyticsView: View {
     func changeMonth(by value: Int) { if let newDate = Calendar.current.date(byAdding: .month, value: value, to: selectedDate) { selectedDate = newDate } }
 }
 
-// --- SUBVIEWS ---
+// ... (Mantenha FinancialRow, PendingRow, DetailRow iguais) ...
 struct FinancialRow: View {
     let shift: Shift
     var body: some View {
