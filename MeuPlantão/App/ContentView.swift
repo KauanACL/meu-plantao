@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// ... (Mantenha o ContentView e ShiftsHistoryView iguais, vamos mudar apenas o ShiftRowCard no final) ...
-
 struct ContentView: View {
     var body: some View {
         TabView {
@@ -69,20 +67,48 @@ struct ShiftsHistoryView: View {
             .sheet(isPresented: $showingAddSheet) { AddShiftView() }
             .confirmationDialog("Excluir", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Excluir apenas este", role: .destructive) { if let s = shiftToDelete { deleteSingleShift(s) } }
-                if let s = shiftToDelete, s.recurrenceID != nil { Button("Excluir toda a série", role: .destructive) { deleteShiftSeries(recurrenceID: s.recurrenceID!) } }
+                
+                // Botão modificado para deixar claro
+                if let s = shiftToDelete, s.recurrenceID != nil {
+                    Button("Excluir este e futuros", role: .destructive) { deleteShiftSeries(triggerShift: s) }
+                }
+                
                 Button("Cancelar", role: .cancel) { shiftToDelete = nil }
-            } message: { Text("Como deseja excluir?") }
+            } message: {
+                Text("Este plantão se repete. O que deseja fazer?")
+            }
         }
     }
     
     func requestDelete(_ shift: Shift) { shiftToDelete = shift; if shift.recurrenceID != nil { showDeleteConfirmation = true } else { deleteSingleShift(shift) } }
-    func deleteSingleShift(_ shift: Shift) { NotificationManager.shared.cancelNotification(for: shift); modelContext.delete(shift); shiftToDelete = nil }
-    func deleteShiftSeries(recurrenceID: String) { let list = shifts.filter { $0.recurrenceID == recurrenceID }; for s in list { NotificationManager.shared.cancelNotification(for: s); modelContext.delete(s) }; shiftToDelete = nil }
+    
+    func deleteSingleShift(_ shift: Shift) {
+        NotificationManager.shared.cancelNotification(for: shift)
+        modelContext.delete(shift)
+        shiftToDelete = nil
+    }
+    
+    // --- CORREÇÃO AQUI: Deleta apenas deste em diante ---
+    func deleteShiftSeries(triggerShift: Shift) {
+        guard let recID = triggerShift.recurrenceID else { return }
+        let triggerDate = triggerShift.startDate
+        
+        // Filtra: Mesmo ID de série E data maior ou igual à do plantão clicado
+        let listToDelete = shifts.filter {
+            $0.recurrenceID == recID && $0.startDate >= triggerDate
+        }
+        
+        for s in listToDelete {
+            NotificationManager.shared.cancelNotification(for: s)
+            modelContext.delete(s)
+        }
+        shiftToDelete = nil
+    }
 }
 
+// ... (Mantenha ShiftRowCard e BadgeMini iguais, não mudaram) ...
 struct ShiftRowCard: View {
     let shift: Shift
-    
     var body: some View {
         NavigationLink(destination: ShiftDetailView(shift: shift)) {
             HStack(spacing: 15) {
@@ -90,38 +116,26 @@ struct ShiftRowCard: View {
                     Text(shift.startDate.formatted(.dateTime.day())).medFont(.title3, weight: .bold).foregroundStyle(statusColor(for: shift))
                     Text(shift.startDate.formatted(.dateTime.month(.abbreviated)).uppercased()).medFont(.caption2, weight: .bold).foregroundStyle(.secondary)
                 }.frame(minWidth: 40)
-                
                 Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 35)
-                
                 VStack(alignment: .leading, spacing: 4) {
                     Text(shift.locationName).medFont(.body, weight: .semibold).lineLimit(1)
-                    
                     HStack(spacing: 6) {
                         Text("\(shift.startDate.formatted(date: .omitted, time: .shortened))").medFont(.caption).foregroundStyle(.secondary)
-                        
-                        if shift.isCommitment {
-                            BadgeMini(text: "COMPROMISSO", color: .gray)
-                        } else if shift.isWorkDone { BadgeMini(text: "FEITO", color: .medGreen) }
+                        if shift.isCommitment { BadgeMini(text: "COMPROMISSO", color: .gray) }
+                        else if shift.isWorkDone { BadgeMini(text: "FEITO", color: .medGreen) }
                         else if shift.status == .swappedOut { BadgeMini(text: "SAÍ", color: .medRed); if shift.swapIsSettled { BadgeMini(text: "PAGO", color: .medGreen) } else { BadgeMini(text: "DEVENDO", color: .medRed) } }
                         else if shift.status == .swappedIn { BadgeMini(text: "ENTREI", color: .medBlue); if shift.swapIsSettled { BadgeMini(text: "RECEBIDO", color: .medGreen) } }
                     }
                 }
-                
                 Spacer()
-                
-                // Se for compromisso, não mostra valor, mostra "DIA TODO" ou Horas
-                VStack(alignment: .trailing) {
-                    if !shift.isCommitment {
+                if !shift.isCommitment {
+                    VStack(alignment: .trailing) {
                         if shift.status == .swappedOut { Text("- \(shift.swapValue.formatted(.currency(code: "BRL")))").medFont(.subheadline, weight: .bold).foregroundStyle(Color.medRed) }
                         else if shift.status == .swappedIn { Text(shift.swapValue.formatted(.currency(code: "BRL"))).medFont(.subheadline, weight: .bold).foregroundStyle(Color.medBlue) }
                         else { Text(shift.amount.formatted(.currency(code: "BRL"))).medFont(.subheadline, weight: .bold).foregroundStyle(Color.primary) }
-                    }
-                    
-                    // Mostra duração ou "Dia Todo"
-                    if shift.isAllDay {
-                        Text("Dia Todo").medFont(.caption2, weight: .bold).foregroundStyle(.secondary)
-                    } else {
-                        Text("\(shift.durationHours)h").medFont(.caption2).foregroundStyle(.secondary)
+                        
+                        if shift.isAllDay { Text("Dia Todo").medFont(.caption2, weight: .bold).foregroundStyle(.secondary) }
+                        else { Text("\(shift.durationHours)h").medFont(.caption2).foregroundStyle(.secondary) }
                     }
                 }
             }
@@ -129,15 +143,10 @@ struct ShiftRowCard: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.black.opacity(0.03), lineWidth: 1))
         }.buttonStyle(.plain)
     }
-    
     func statusColor(for shift: Shift) -> Color {
         if shift.isCommitment { return .gray }
         if shift.isWorkDone { return .medGreen }
-        switch shift.status {
-        case .swappedOut: return .medRed
-        case .swappedIn: return .medBlue
-        default: return shift.startDate < Date() ? .medOrange : .medBlue
-        }
+        switch shift.status { case .swappedOut: return .medRed; case .swappedIn: return .medBlue; default: return shift.startDate < Date() ? .medOrange : .medBlue }
     }
 }
 
