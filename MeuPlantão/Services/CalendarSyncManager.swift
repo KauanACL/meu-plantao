@@ -41,31 +41,22 @@ class CalendarSyncManager: ObservableObject {
         }
         
         // 1. LIMPEZA TOTAL (WIPE)
-        // Busca eventos de 2 anos atrás até 2 anos na frente
         let startDate = Date().addingTimeInterval(-63072000) // -2 anos
         let endDate = Date().addingTimeInterval(63072000)   // +2 anos
         
         let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: [calendar])
         let existingEvents = eventStore.events(matching: predicate)
         
-        var deletedCount = 0
-        
         // Deleta tudo para garantir que não sobre lixo
         for event in existingEvents {
             do {
                 try eventStore.remove(event, span: .thisEvent, commit: false)
-                deletedCount += 1
             } catch {
                 print("Erro ao marcar para deletar: \(error)")
             }
         }
         
-        // Commita a limpeza antes de criar os novos
-        do {
-            try eventStore.commit()
-        } catch {
-            print("Erro ao efetivar limpeza: \(error)")
-        }
+        do { try eventStore.commit() } catch { print("Erro ao efetivar limpeza: \(error)") }
         
         // 2. RECRIAÇÃO (RECREATE)
         var createdCount = 0
@@ -76,36 +67,49 @@ class CalendarSyncManager: ObservableObject {
             
             let event = EKEvent(eventStore: eventStore)
             event.calendar = calendar
-            event.title = "Plantão: \(shift.locationName)"
+            
+            // --- PERSONALIZAÇÃO VISUAL ---
+            let prefixo = shift.isCommitment ? "🗓️" : "🏥 Plantão:"
+            event.title = "\(prefixo) \(shift.locationName)"
+            
             event.startDate = shift.startDate
             event.endDate = shift.endDate
+            event.isAllDay = shift.isAllDay // Sincroniza a flag de Dia Todo
             
             // Detalhes na nota
-            let valorFormatado = shift.status == .swappedIn
-                ? shift.swapValue.formatted(.currency(code: "BRL"))
-                : shift.amount.formatted(.currency(code: "BRL"))
+            var info = ""
+            if shift.isCommitment {
+                info = "Compromisso Pessoal\nBloqueio de Agenda"
+            } else {
+                let valorFormatado = shift.status == .swappedIn
+                    ? shift.swapValue.formatted(.currency(code: "BRL"))
+                    : shift.amount.formatted(.currency(code: "BRL"))
+                let statusTexto = shift.isWorkDone ? "Concluído" : "Agendado"
+                
+                info = """
+                Status: \(statusTexto)
+                Duração: \(shift.durationHours)h
+                Valor: \(valorFormatado)
+                """
+            }
             
-            let statusTexto = shift.isWorkDone ? "Concluído" : "Agendado"
+            event.notes = "\(info)\n\nGerenciado por MeuPlantão"
             
-            event.notes = """
-            Status: \(statusTexto)
-            Duração: \(shift.durationHours)h
-            Valor: \(valorFormatado)
-            
-            Gerenciado por MeuPlantão
-            """
-            
-            // Adiciona Localização (GPS) para abrir no Waze/Maps
+            // Adiciona Localização (GPS) apenas se não for compromisso de texto simples
             if let lat = shift.latitude, let long = shift.longitude {
                 let location = EKStructuredLocation(title: shift.locationName)
                 location.geoLocation = CLLocation(latitude: lat, longitude: long)
                 event.structuredLocation = location
             }
             
-            // Alarme (Pega do NotificationManager ou padrão 2h antes)
-            // Adicionamos um alerta padrão de 2 horas antes no calendário
-            let alarm = EKAlarm(relativeOffset: -7200) // -7200 segundos = 2 horas
-            event.addAlarm(alarm)
+            // Alarme Padrão no Calendário (Opcional, pois o App já notifica)
+            // Mas é bom ter no calendário nativo também
+            if !shift.isAllDay {
+                event.addAlarm(EKAlarm(relativeOffset: -7200)) // 2h antes
+            } else {
+                // Se for dia todo, avisa as 09:00 do dia anterior (exemplo)
+                // Ou não põe alarme e deixa o usuário decidir
+            }
             
             do {
                 try eventStore.save(event, span: .thisEvent, commit: false)
@@ -115,18 +119,12 @@ class CalendarSyncManager: ObservableObject {
             }
         }
         
-        // Commita a criação
-        do {
-            try eventStore.commit()
-        } catch {
-            print("Erro ao salvar novos eventos: \(error)")
-        }
+        do { try eventStore.commit() } catch { print("Erro ao salvar novos eventos: \(error)") }
         
         DispatchQueue.main.async {
             self.isSyncing = false
             self.lastSyncMessage = "Sincronizado! (\(createdCount) ativos)"
             
-            // Limpa mensagem após 4 segundos
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                 if self.lastSyncMessage.contains("Sincronizado") {
                     self.lastSyncMessage = ""
@@ -137,16 +135,12 @@ class CalendarSyncManager: ObservableObject {
     
     private func getOrCreateAppCalendar() -> EKCalendar? {
         let calendars = eventStore.calendars(for: .event)
-        
-        if let existing = calendars.first(where: { $0.title == calendarName }) {
-            return existing
-        }
+        if let existing = calendars.first(where: { $0.title == calendarName }) { return existing }
         
         let newCalendar = EKCalendar(for: .event, eventStore: eventStore)
         newCalendar.title = calendarName
         
         let sources = eventStore.sources
-        // Tenta iCloud primeiro, depois Local
         if let iCloudSource = sources.first(where: { $0.sourceType == .calDAV && $0.title == "iCloud" }) {
             newCalendar.source = iCloudSource
         } else {
