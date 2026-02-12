@@ -92,11 +92,17 @@ struct HomeView: View {
                             }
                             Spacer()
                             HStack(spacing: 12) {
-                                Button(action: { showingSettings = true }) {
+                                Button(action: {
+                                    HapticManager.shared.impact(.light)
+                                    showingSettings = true
+                                }) {
                                     Image(systemName: "gearshape.fill").font(.title3).foregroundStyle(.gray)
                                         .frame(width: 44, height: 44).background(Color.white).clipShape(Circle())
                                 }
-                                Button(action: { showingAddSheet = true }) {
+                                Button(action: {
+                                    HapticManager.shared.impact(.light)  
+                                    showingAddSheet = true
+                                }) {
                                     Image(systemName: "plus").font(.title3).fontWeight(.bold).foregroundStyle(.white)
                                         .frame(width: 48, height: 48).background(Color.medBlue).clipShape(Circle())
                                 }
