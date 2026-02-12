@@ -13,6 +13,10 @@ struct MeuPlantaoApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Shift.self,
+            FiscalNote.self,
+            SwapAgreement.self,
+            Hospital.self,
+            FinancialAlert.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
