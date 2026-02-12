@@ -204,6 +204,28 @@ struct ShiftDetailView: View {
                         }
                     }
                     
+                    // 6. FINANCEIRO V1.1
+                    if !shift.isCommitment {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Documentação Fiscal").medFont(.headline).padding(.leading, 5)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Notas vinculadas: \(shift.fiscalNoteIDs.count)")
+                                    .medFont(.subheadline, weight: .semibold)
+                                if shift.fiscalNoteIDs.isEmpty {
+                                    Text("Nenhuma nota fiscal vinculada ainda.")
+                                        .medFont(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if shift.swapAgreementID != nil {
+                                    Text("Acordo de repasse registrado para este plantão.")
+                                        .medFont(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .medCard()
+                        }
+                    }
+
                     // 6. NOTAS
                     if let notes = shift.notes, !notes.isEmpty {
                         VStack(alignment: .leading) {
