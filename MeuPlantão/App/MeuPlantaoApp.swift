@@ -6,12 +6,14 @@ struct MeuPlantaoApp: App {
     // Gerenciador de Autenticação
     @StateObject private var authManager = AuthenticationManager()
     
+    // Onboarding
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    
     // Configuração do Banco de Dados (SwiftData)
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Shift.self,
         ])
-        // isStoredInMemoryOnly: false = Salva no disco real do iPhone
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
@@ -21,20 +23,27 @@ struct MeuPlantaoApp: App {
         }
     }()
     
-    // Inicialização (Pedir permissão de notificação logo ao abrir)
+    // Inicialização
     init() {
         NotificationManager.shared.requestAuthorization()
     }
 
     var body: some Scene {
         WindowGroup {
-            // Lógica de Segurança:
-            if authManager.isUnlocked {
-                ContentView()
-                    .transition(.opacity) // Efeito suave ao desbloquear
-            } else {
-                LockView(authManager: authManager)
+            Group {
+                if !hasCompletedOnboarding {
+                    OnboardingView()
+                        .transition(.opacity)
+                } else if authManager.isUnlocked {
+                    ContentView()
+                        .transition(.opacity)
+                } else {
+                    LockView(authManager: authManager)
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.3), value: hasCompletedOnboarding)
+            .animation(.easeInOut(duration: 0.3), value: authManager.isUnlocked)
         }
         .modelContainer(sharedModelContainer)
     }
