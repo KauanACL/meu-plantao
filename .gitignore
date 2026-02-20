@@ -1,20 +1,117 @@
-# Xcode
-.DS_Store
-*/build/
-*.derivedData
-*.hmap
-*.ipa
-*.xcuserstate
-project.xcworkspace/
-xcuserdata/
+# ================================
+# MEUPLANTÃO — .gitignore
+# App iOS Nativo: Swift + SwiftUI + Xcode
+# ================================
 
-# Swift Package Manager
+# ───────────────────────────────
+# XCODE
+# ───────────────────────────────
+# Build
+build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+
+# Diretório de configurações de usuário (específico por máquina)
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Resultado de resolução de pacotes (commitar só Package.resolved se quiser travar versões)
 .build/
 
-# Logs
-Logs/
+# Arquivos temporários e caches do Xcode
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
 
-# Outros
-*.moved-aside
-*.xccheckout
-*.xcscmblueprint
+# Playground output
+timeline.xctimeline
+playground.xcworkspace
+
+# ───────────────────────────────
+# SWIFT PACKAGE MANAGER
+# ───────────────────────────────
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+Packages/
+Package.resolved
+
+# ───────────────────────────────
+# COCOAPODS (se usar no futuro)
+# ───────────────────────────────
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# ───────────────────────────────
+# FASTLANE (se usar no futuro)
+# ───────────────────────────────
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# ───────────────────────────────
+# CERTIFICADOS E PROVISIONAMENTO
+# ───────────────────────────────
+*.p12
+*.p8
+*.mobileprovision
+*.cer
+*.certSigningRequest
+AuthKey_*.p8
+GoogleService-Info.plist
+
+# ───────────────────────────────
+# VARIÁVEIS DE AMBIENTE / SECRETS
+# ───────────────────────────────
+Secrets.swift
+Config.xcconfig
+*.xcconfig
+!Debug.xcconfig
+!Release.xcconfig
+Secrets/
+.env
+.env.*
+!.env.example
+
+# ───────────────────────────────
+# SISTEMA OPERACIONAL
+# ───────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ───────────────────────────────
+# EDITORES E IDES
+# ───────────────────────────────
+# VSCode (se usar para editar arquivos de suporte)
+.vscode/
+
+# JetBrains (AppCode)
+.idea/
+*.iml
+
+# ───────────────────────────────
+# LOGS
+# ───────────────────────────────
+Logs/
+*.log
+
+# ───────────────────────────────
+# TESTFLIGHT / DISTRIBUIÇÃO
+# ───────────────────────────────
+*.ipa
+ExportOptions.plist
